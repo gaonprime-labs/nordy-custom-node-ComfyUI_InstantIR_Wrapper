@@ -6,7 +6,8 @@ import numpy as np
 import logging
 import folder_paths
 
-from .utils import load_list_images, tensor2imglist, tensor_upscale,instantIR_main, instantIR_load_model, auto_downlaod
+
+from .utils import load_list_images, tensor2imglist, tensor_upscale,instantIR_main, instantIR_load_model, auto_downlaod,clear_memory
 
 node_cur_path = os.path.dirname(os.path.abspath(__file__))
 device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -52,7 +53,6 @@ class InstantIR_Loader:
                 "lora": (["none"] + folder_paths.get_filename_list("loras"),),
                 "InstantIR_lora": (INSTANT_LIST,),
                 "use_clip_encoder": ("BOOLEAN", {"default": True},),
-                "low_vram": ("BOOLEAN", {"default": False},),
             }
         }
     
@@ -62,7 +62,7 @@ class InstantIR_Loader:
     CATEGORY = "InstantIR"
     
     def main_(self, sdxl_checkpoints, dino_repo, adapter_checkpoints, aggregator_checkpoints,lora, InstantIR_lora,
-             use_clip_encoder,low_vram):
+             use_clip_encoder):
         if not dino_repo:
             logging.info("no dino files in dir ,auto download from facebook/dinov2-large")
             vision_encoder_path = auto_downlaod(InstantIR_current_path, "dino")
@@ -88,7 +88,7 @@ class InstantIR_Loader:
         if lora != "none":
             lora_path = folder_paths.get_full_path("loras", lora)
         else:
-            raise "need chocie a lora checkpoint"
+            raise "need chocie a SDXL lcm lora checkpoint"
         
         if aggregator_checkpoints != "none":
             aggregator_path = folder_paths.get_full_path("InstantIR", aggregator_checkpoints)
@@ -99,12 +99,9 @@ class InstantIR_Loader:
                                      previewer_lora_path,lora_path, aggregator_path, device)
         
         logging.info("loading checkpoint done.")
-        
-        if low_vram and not torch.backends.mps.is_available():
-            model.to(dtype=torch_dtype)
-            model.enable_model_cpu_offload() #MPS not support
-        else:
-            model.to(device=device, dtype=torch_dtype)
+        model.to(dtype=torch_dtype)
+        if not torch.backends.mps.is_available():
+            model.enable_model_cpu_offload()  # MPS not support
         return (model,)
 
 
@@ -147,6 +144,7 @@ class InstantIR_Sampler:
         ouput_img = instantIR_main(image_list, model, seed, creative_restoration, steps, prompt, negative_prompt, cfg,
                                    batch_size, device,preview_start,guidance_end)
         logging.info("finish processing")
+        clear_memory()
         image = load_list_images(ouput_img)
         
         return (image,)
