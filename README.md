@@ -1,7 +1,16 @@
 # ComfyUI_InstantIR_Wrapper
-You can InstantIR to Fix blurry photos in ComfyUI ，[InstantIR](https://github.com/instantX-research/InstantIR):Blind Image Restoration with Instant Generative Reference
+You can InstantIR to Fix blurry photos in ComfyUI ，
+[InstantIR](https://github.com/instantX-research/InstantIR):Blind Image Restoration with Instant Generative Reference
+喜欢这个项目的，请给InstantIR项目个星星！（If you like this project, please give the InstantIR project a star!） 
 
 ----
+
+Update
+-----
+**2024-11-11**
+* change some code for lowram,The inference speed of 4070 12G is 20 times faster than before(21s at 20 steps );
+* 修改了一些代码，目前4070 12G的推理速度比之前演示的快20倍（感觉这个才是正常的，显存峰值10G左右,20步跑完20秒左右)
+
 
 1.Installation  
 -----
@@ -33,7 +42,7 @@ pip install -r requirements.txt
 4.Example
 ----   
 
-![](https://github.com/smthemex/ComfyUI_InstantIR/blob/main/example.png)
+![](https://github.com/smthemex/ComfyUI_InstantIR/blob/main/exampleA.png)
 
 ----  
 
