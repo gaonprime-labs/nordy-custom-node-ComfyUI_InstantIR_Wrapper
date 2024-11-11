@@ -15,7 +15,7 @@
 
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
+import gc
 import numpy as np
 import PIL.Image
 import torch
@@ -29,7 +29,6 @@ from transformers import (
 )
 
 from diffusers.utils.import_utils import is_invisible_watermark_available
-
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import (
     FromSingleFileMixin,
@@ -45,7 +44,7 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.schedulers import KarrasDiffusionSchedulers, LCMScheduler
+from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     deprecate,
@@ -69,6 +68,9 @@ from ..module.aggregator import Aggregator
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+def clear_memory():
+    torch.cuda.empty_cache()
+    gc.collect()
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -315,6 +317,8 @@ class InstantIRPipeline(
         add_watermarker: Optional[bool] = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
+        low_vram=False
+        
     ):
         super().__init__()
 
@@ -340,7 +344,7 @@ class InstantIRPipeline(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=True
         )
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
-
+        self.low_vram = low_vram
         if add_watermarker:
             self.watermark = StableDiffusionXLWatermarker()
         else:
@@ -373,6 +377,7 @@ class InstantIRPipeline(
             lora_alpha = next(iter(alpha_dict.values()))
         else:
             lora_alpha = 1
+            
         logger.info(f"use lora alpha {lora_alpha}")
         lora_config = LoraConfig(
             r=64,
@@ -380,10 +385,11 @@ class InstantIRPipeline(
             lora_alpha=lora_alpha,
             lora_dropout=0.0,
         )
-
+       
         adapter_name = "lcm" if use_lcm else "previewer"
         self.unet.add_adapter(lora_config, adapter_name)
         incompatible_keys = set_peft_model_state_dict(self.unet, lora_state_dict, adapter_name=adapter_name)
+         # clear lora dict
         if incompatible_keys is not None:
             # check only for unexpected keys
             unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
@@ -394,7 +400,8 @@ class InstantIRPipeline(
                     f" {unexpected_keys}. "
                 )
         self.unet.disable_adapters()
-
+        del lora_state_dict,alpha_dict  # clear lora dict
+        torch.cuda.empty_cache()
         return lora_alpha
     
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
@@ -633,7 +640,7 @@ class InstantIRPipeline(
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+    def encode_image(self, image, device, num_images_per_prompt,low_vram, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
@@ -654,15 +661,22 @@ class InstantIRPipeline(
             if isinstance(self.image_encoder, CLIPVisionModelWithProjection):
                 # CLIP image encoder.
                 image_embeds = self.image_encoder(image).image_embeds
+                if low_vram:
+                    self.image_encoder.to("cpu")
+                    clear_memory()
                 image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
                 uncond_image_embeds = torch.zeros_like(image_embeds)
             else:
                 # DINO image encoder.
                 image_embeds = self.image_encoder(image).last_hidden_state
+                
                 image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
                 uncond_image_embeds = self.image_encoder(
                     torch.zeros_like(image)
                 ).last_hidden_state
+                if low_vram:
+                    self.image_encoder.to("cpu")
+                    clear_memory()
                 uncond_image_embeds = uncond_image_embeds.repeat_interleave(
                     num_images_per_prompt, dim=0
                 )
@@ -671,7 +685,7 @@ class InstantIRPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance,low_vram
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -696,7 +710,7 @@ class InstantIRPipeline(
             ):
                 output_hidden_state = isinstance(self.image_encoder, CLIPVisionModelWithProjection) and not isinstance(image_proj_layer, ImageProjection)
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
-                    single_ip_adapter_image, device, 1, output_hidden_state
+                    single_ip_adapter_image, device, 1,low_vram, output_hidden_state
                 )
                 single_image_embeds = torch.stack([single_image_embeds] * (num_images_per_prompt//single_image_embeds.shape[0]), dim=0)
                 single_negative_image_embeds = torch.stack(
@@ -1261,7 +1275,7 @@ class InstantIRPipeline(
 
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
-
+      
         if callback is not None:
             deprecate(
                 "callback",
@@ -1347,6 +1361,7 @@ class InstantIRPipeline(
         )
 
         # 3.2 Encode ip_adapter_image
+
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
@@ -1354,8 +1369,9 @@ class InstantIRPipeline(
                 device,
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
+                self.low_vram
             )
-
+            
         # 4. Prepare image
         image = self.prepare_image(
             image=image,
@@ -1387,7 +1403,7 @@ class InstantIRPipeline(
 
         # 6. Prepare latent variables
         if init_latents_with_lq:
-            latents = self.init_latents(image, generator, timesteps[0])
+            latents = self.init_latents(image, generator, timesteps[0]) # torch.Size([1, 4, 96, 96])
         else:
             num_channels_latents = self.unet.config.in_channels
             latents = self.prepare_latents(
@@ -1400,7 +1416,6 @@ class InstantIRPipeline(
                 generator,
                 latents,
             )
-
         # 6.5 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
@@ -1514,7 +1529,10 @@ class InstantIRPipeline(
                 aggregator_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # prepare time_embeds in advance as adapter input
+         
                 cross_attention_t_emb = self.unet.get_time_embed(sample=latent_model_input, timestep=t)
+                if self.low_vram and not torch.backends.mps.is_available():
+                    self.unet.to(device="cuda")
                 cross_attention_emb = self.unet.time_embedding(cross_attention_t_emb, timestep_cond)
                 cross_attention_aug_emb = None
 
