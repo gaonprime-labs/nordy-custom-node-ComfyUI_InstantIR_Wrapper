@@ -150,7 +150,8 @@ def load_adapter_to_pipe(
                     raise ValueError(f"Missing keys in adapter_modules: {missing}")
         if "image_proj" in state_dict.keys():
             image_proj_model.load_state_dict(state_dict["image_proj"])
-
+        del state_dict #clear adapter dict
+        torch.cuda.empty_cache()
         # convert IP-Adapter Image Projection layers to diffusers
         image_projection_layers = []
         image_projection_layers.append(image_proj_model)
