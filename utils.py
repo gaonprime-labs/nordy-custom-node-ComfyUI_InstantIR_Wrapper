@@ -8,10 +8,12 @@ import numpy as np
 from huggingface_hub import hf_hub_download
 from .schedulers.lcm_single_step_scheduler import LCMSingleStepScheduler
 from diffusers import DDPMScheduler
-
+import psutil
+import gc
 from .pipelines.sdxl_instantir import InstantIRPipeline
 from .module.ip_adapter.utils import load_adapter_to_pipe
 from comfy.utils import common_upscale,ProgressBar
+
 
 if torch.cuda.is_available():
     torch_dtype = torch.float16
@@ -19,6 +21,14 @@ else:
     torch_dtype = torch.float32
     
 cur_path = os.path.dirname(os.path.abspath(__file__))
+
+def print_memory_usage(step):
+    print(f"{step} - Memory usage: {psutil.virtual_memory().used / (1024 ** 3):.2f} GB")
+
+def clear_memory():
+    torch.cuda.empty_cache()
+    gc.collect()
+
 
 def name_unet_submodules(unet):
     def recursive_find_module(name, module, end=False):
@@ -99,16 +109,16 @@ def auto_downlaod(current_path,repo):
 def instantIR_load_model(use_clip_encoder,vision_encoder_path,sdxl_path,adapter_path,previewer_lora_path,lora_path,aggregator_path,device):
     
     # Base models.
- 
+    low_vram=True #keep it default
     modle_config = os.path.join(cur_path, "config_files/sdxl_repo")
     original_config_file = os.path.join(cur_path, "config_files/sd_xl_base.yaml")
     try:
         pipe = InstantIRPipeline.from_single_file(
-            sdxl_path, config=modle_config, original_config=original_config_file, torch_dtype=torch.float16,use_clip_encoder=use_clip_encoder,)
+            sdxl_path, config=modle_config, original_config=original_config_file, torch_dtype=torch.float16,use_clip_encoder=use_clip_encoder,low_vram=low_vram)
     except:
         pipe = InstantIRPipeline.from_single_file(
                 sdxl_path, config=modle_config, original_config_file=original_config_file,
-                torch_dtype=torch.float16,use_clip_encoder=use_clip_encoder,)
+                torch_dtype=torch.float16,use_clip_encoder=use_clip_encoder,low_vram=low_vram)
     
     
     # Image prompt projector.
