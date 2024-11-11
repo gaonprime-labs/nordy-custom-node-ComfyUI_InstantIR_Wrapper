@@ -1,7 +1,7 @@
 # ComfyUI_InstantIR_Wrapper
-You can InstantIR to Fix blurry photos in ComfyUI ，
-[InstantIR](https://github.com/instantX-research/InstantIR):Blind Image Restoration with Instant Generative Reference
-喜欢这个项目的，请给InstantIR项目个星星！（If you like this project, please give the InstantIR project a star!） 
+You can InstantIR to Fix blurry photos in ComfyUI   
+[InstantIR](https://github.com/instantX-research/InstantIR):Blind Image Restoration with Instant Generative Reference    
+喜欢这个项目的，请给InstantIR项目个星星！（If you like this project, please give the InstantIR project a star!）    
 
 ----
 
