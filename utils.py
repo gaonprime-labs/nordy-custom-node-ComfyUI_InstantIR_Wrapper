@@ -136,7 +136,6 @@ def instantIR_load_model(use_clip_encoder,vision_encoder_path,sdxl_path,adapter_
     lora_alpha = pipe.prepare_previewers(lora_path, use_lcm=True)
     print(f"use lcm lora alpha {lora_alpha}")
     
-    
     pipe.scheduler = DDPMScheduler.from_pretrained(modle_config, subfolder="scheduler")
     #lcm_scheduler = LCMSingleStepScheduler.from_config(pipe.scheduler.config)
     
@@ -150,6 +149,7 @@ def instantIR_load_model(use_clip_encoder,vision_encoder_path,sdxl_path,adapter_
     torch.cuda.empty_cache()
     return pipe
 
+@torch.no_grad()
 def instantIR_main(lq,pipe, seed,creative_restoration,num_inference_steps,prompt,neg_prompt,cfg,batch_size,device,preview_start,guidance_end):
     
     lcm_scheduler = LCMSingleStepScheduler.from_config(pipe.scheduler.config)
@@ -157,9 +157,11 @@ def instantIR_main(lq,pipe, seed,creative_restoration,num_inference_steps,prompt
     
     if creative_restoration:
         if "lcm" not in pipe.unet.active_adapters():
+            print("creative_restoration using lcm lora")
             pipe.unet.set_adapter('lcm')
     else:
         if "previewer" not in pipe.unet.active_adapters():
+            print("creative_restoration using previewer lora")
             pipe.unet.set_adapter('previewer')
     
     if guidance_end > 1.0:
@@ -181,6 +183,8 @@ def instantIR_main(lq,pipe, seed,creative_restoration,num_inference_steps,prompt
         neg_prompt = [neg_prompt]
     neg_prompt = neg_prompt*len(lq)
     img_list=[]
+    gpu = 0
+    torch.cuda.reset_max_memory_allocated(gpu)
     for i in range(batch_size):
         image = pipe(
             prompt=prompt,
@@ -196,11 +200,14 @@ def instantIR_main(lq,pipe, seed,creative_restoration,num_inference_steps,prompt
         )[0]
         
         img_list.append(image) #image:list
+    # Report maximum GPU memory usage in GB
+    max_memory_used = torch.cuda.max_memory_allocated(gpu) / (1024 ** 3)  # Convert to GB
+    print(f"Maximum GPU memory used: {max_memory_used:.2f} GB")
     iamge_list=[]
     for j in img_list: # [list,list]
         for i in j:
            iamge_list.append(i)
-         
+   
     return iamge_list
 
 def spilit_tensor2list(img_tensor):#[B,H,W,C], C=3,B>=1
