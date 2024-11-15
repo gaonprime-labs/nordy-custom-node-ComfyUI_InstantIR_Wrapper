@@ -6,7 +6,6 @@ import numpy as np
 import logging
 import folder_paths
 
-
 from .utils import load_list_images, tensor2imglist, tensor_upscale,instantIR_main, instantIR_load_model, auto_downlaod,clear_memory
 
 node_cur_path = os.path.dirname(os.path.abspath(__file__))
@@ -52,7 +51,7 @@ class InstantIR_Loader:
                 "aggregator_checkpoints": (INSTANT_LIST,),
                 "lora": (["none"] + folder_paths.get_filename_list("loras"),),
                 "InstantIR_lora": (INSTANT_LIST,),
-                "use_clip_encoder": ("BOOLEAN", {"default": True},),
+                "use_clip_encoder": ("BOOLEAN", {"default": False},),
             }
         }
     
@@ -62,7 +61,7 @@ class InstantIR_Loader:
     CATEGORY = "InstantIR"
     
     def main_(self, sdxl_checkpoints, dino_repo, adapter_checkpoints, aggregator_checkpoints,lora, InstantIR_lora,
-             use_clip_encoder):
+             use_clip_encoder,):
         if not dino_repo:
             logging.info("no dino files in dir ,auto download from facebook/dinov2-large")
             vision_encoder_path = auto_downlaod(InstantIR_current_path, "dino")
@@ -96,7 +95,7 @@ class InstantIR_Loader:
             raise "need chocie a aggregator checkpoint"
         
         model = instantIR_load_model(use_clip_encoder, vision_encoder_path, sdxl_path, adapter_path,
-                                     previewer_lora_path,lora_path, aggregator_path, device)
+                                     previewer_lora_path,lora_path, aggregator_path,device)
         
         logging.info("loading checkpoint done.")
         model.to(dtype=torch_dtype)
