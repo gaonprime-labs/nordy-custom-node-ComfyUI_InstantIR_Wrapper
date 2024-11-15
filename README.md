@@ -42,7 +42,7 @@ pip install -r requirements.txt
 4.Example
 ----   
 
-![](https://github.com/smthemex/ComfyUI_InstantIR/blob/main/exampleA.png)
+![](https://github.com/smthemex/ComfyUI_InstantIR/blob/main/example.png)
 
 ----  
 
