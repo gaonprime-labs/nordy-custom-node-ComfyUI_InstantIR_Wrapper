@@ -378,7 +378,7 @@ class InstantIRPipeline(
         else:
             lora_alpha = 1
             
-        logger.info(f"use lora alpha {lora_alpha}")
+        #logger.info(f"use lora alpha {lora_alpha}")
         lora_config = LoraConfig(
             r=64,
             target_modules=LCM_LORA_MODULES if use_lcm else PREVIEWER_LORA_MODULES,
